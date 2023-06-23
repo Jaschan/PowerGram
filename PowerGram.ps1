@@ -12,12 +12,12 @@ if ($os -ne "Unix") {
 }
 $ErrorActionPreference = "SilentlyContinue"
 $ProgressPreference = "SilentlyContinue"
-Set-StrictMode -Off
+#Set-StrictMode -Off
 
 # Token & ChatID
-$token = "" # Talk with @BotFather and create it first
-$chatid = "" # Talk with your Bot and send /getid to get it
-$baseurl = "https://api.telegram.org/bot$token"
+$token = "5931392898:AAFlCiZSoy4wFWQlFQt9jEdeVznQHnG9c5w" # Talk with @BotFather and create it first
+$AllowedChats = @("155419747") # Talk with your Bot and send /getid to get it
+$baseurl = "https://api.telegram.org/bot{0}" -f $token
 # Banner
 Write-Host
 Write-Host "  ____                         ____                      " -ForegroundColor Blue
@@ -39,7 +39,7 @@ function Show-Help {
     Write-Host "PowerGram from PowerShell" -ForegroundColor Blue 
     Write-Host "        .\PowerGram.ps1 -h" -ForegroundColor Green -NoNewLine
     Write-Host " Show this help message" 
-    Write-Host "        .\PowerGram.ps1 -run" -ForegroundColor Green -NoNewLine 
+    Write-Host "        .\PowerGram.ps1" -ForegroundColor Green -NoNewLine 
     Write-Host " Start PowerGram Bot"
     Write-Host 
     Write-Host "        PowerGram from Telegram" -ForegroundColor Blue 
@@ -61,6 +61,12 @@ function Show-Help {
 $AllProtocols = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
 [System.Net.ServicePointManager]::SecurityProtocol = $AllProtocols
 
+function Send-Message {
+    Param([int]$ChatID,[string]$Message,[ValidateSet('HTML', 'Markdown', 'MarkdownV2')][string]$ParseMode='HTML')
+    $Uri = "$baseurl/sendMessage?chat_id={0}&text={1}&parse_mode={2}" -f $ChatID, $Message, $ParseMode
+    Invoke-WebRequest $Uri | Write-Output
+}
+
 # Wake On Lan
 if ($os -ne "Unix") {
     function wakeonlan {
@@ -81,20 +87,22 @@ if ($os -ne "Unix") {
 # Upload Function
 function upload {
     Param([string]$uploadfile)
-    if ($os -ne "Unix") { $slash = "\" }
-    else { $slash = "/" }
-    $botupdate = Invoke-WebRequest -Uri "$baseurl/getUpdates?offset=($offset2)"
-    $jsonresult = [array]($botupdate | ConvertFrom-Json).result
-    $documentid = $jsonresult.message.document.file_id | Select-Object -Last 1
-    $docuname = $jsonresult.message.document.file_name | Select-Object -Last 1
+    if ($os -ne "Unix") { $slash = "\" } else { $slash = "/" }
+    $BotUpdates = Invoke-WebRequest -Uri "$baseurl/getUpdates?offset=($offset2)"
+    $JsonResult = [array]($BotUpdates | ConvertFrom-Json).result
+    $documentid = $JsonResult.message.document.file_id | Select-Object -Last 1
+    $docuname = $JsonResult.message.document.file_name | Select-Object -Last 1
     $Uri = "$baseurl/getFile"
     $Response = Invoke-WebRequest $Uri -Method Post -ContentType 'application/json' -Body "{`"file_id`":`"$documentid`"}"
     $jsonpath = [array]($Response | ConvertFrom-Json).result
     $uploadpath = $jsonpath.file_path
-    $Message = "[>] Uploading $docuname.."
-    $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($Message)&parse_mode=html"
-    if ($uploadfile -like "*$slash*") { Invoke-WebRequest "https://api.telegram.org/file/bot$($token)/$uploadpath" -OutFile $uploadfile$slash$docuname }
-    else { Invoke-WebRequest "https://api.telegram.org/file/bot$($token)/$uploadpath" -OutFile $docuname }
+    $Message = "[>] Uploading [$docuname]"
+    $Response = Send-Message $id $Message -ParseMode HTML
+    if ($uploadfile -like "*$slash*") {
+        Invoke-WebRequest "https://api.telegram.org/file/bot$($token)/$uploadpath" -OutFile $uploadfile$slash$docuname
+    } else {
+        Invoke-WebRequest "https://api.telegram.org/file/bot$($token)/$uploadpath" -OutFile $docuname
+    }
 }
 
 # Download Function
@@ -112,7 +120,8 @@ function download {
     $Uri = "$baseurl/sendDocument"
     $fileBytes = [System.IO.File]::ReadAllBytes($downloadfile)
     $fileEncoding = [System.Text.Encoding]::GetEncoding("UTF-8").GetString($fileBytes)
-    $boundary = [System.Guid]::NewGuid().ToString(); $LF = "`r`n"
+    $boundary = [System.Guid]::NewGuid().ToString()
+    $LF = "`r`n"
     $bodyLines = ( "--$boundary","Content-Disposition: form-data; name=`"chat_id`"$LF",
         "$chatid$LF","--$boundary","Content-Disposition: form-data; name=`"document`"; filename=`"$filename`"",
         "Content-Type: application/octet-stream$LF","$fileEncoding","--$boundary--$LF" ) -join $LF
@@ -120,128 +129,125 @@ function download {
 }
 
 # Start PowerGram
-if ((!$args[0]) -or ($args[0] -like "-h*")) { Show-Help ; exit }
+if ($args[0] -like "-h*") {
+    Show-Help
+    exit
+}
 if (!$token) {
     Show-Help
     Write-Host "`n[!] Token not found! Please check before run PowerGram!`n" -ForegroundColor Red
     exit
 }
-Write-Host "`n[+] Ready! Waiting for new messages..`n" -ForegroundColor Green
+Write-Host "`n[+] Ready! Waiting for new messages`n" -ForegroundColor Green
 $Hostname = ([Environment]::MachineName).ToLower()
-$User = ([Environment]::UserName).tolower()
-$Message  = "<b>----------- PowerGram by @JoelGMSec -----------</b>`n"
-$Message += "`n[>] New connection from $Hostname\$User"
-$Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($chatID)&text=$($Message)&parse_mode=html"
+$User = ([Environment]::UserName).ToLower()
+$Interactive = $false
 
 # Main Function
 while ($true) {
-    $botupdate = Invoke-WebRequest -Uri "$baseurl/getUpdates"
-    $jsonresult = [array]($botupdate | ConvertFrom-Json).result
-    $messageid = $jsonresult.message.message_id | Select-Object -Last 1
-    $updateid = $jsonresult.update_id | Select-Object -Last 1
+    $BotUpdates = Invoke-WebRequest -Uri "$baseurl/getUpdates"
+    $JsonResult = [array]($BotUpdates | ConvertFrom-Json).result
+    $messageid = $JsonResult.message.message_id | Select-Object -Last 1
+    $updateid = $JsonResult.update_id | Select-Object -Last 1
     if ($messageid -eq $null) { $messageid = 0 }
     $updateid = [int]$updateid++
     $messageid = [int]$messageid 
     do {
-        $botupdate = Invoke-WebRequest -Uri "$baseurl/getUpdates?offset=$updateid"
-        $jsonresult = [array]($botupdate | ConvertFrom-Json).result
-        $messageid2 = $jsonresult.message.message_id | Select-Object -Last 1
+        $BotUpdates = Invoke-WebRequest -Uri "$baseurl/getUpdates?offset=$updateid"
+        $JsonResult = [array]($BotUpdates | ConvertFrom-Json).result
+        $messageid2 = $JsonResult.message.message_id | Select-Object -Last 1
         $messageid2 = [int]$messageid2
         sleep 1
     }
     until ($messageid -notin $messageid2)
 
     # Event Log
-    if ($jsonresult.message.document -notin $messageid2) {
-        $id = $jsonresult.message.from.id | Select-Object -Last 1
-        $username = $jsonresult.message.from.username | Select-Object -Last 1
-        $text = $jsonresult.message.text | Select-Object -Last 1
+    if ($JsonResult.message.document -notin $messageid2) {
+        $id = $JsonResult.message.from.id | Select-Object -Last 1
+        $username = $JsonResult.message.from.username | Select-Object -Last 1
+        $text = $JsonResult.message.text | Select-Object -Last 1
         $time = Get-Date -UFormat "%m/%d/%Y %R"
         Write-Host "[$time] " -NoNewLine -ForegroundColor Yellow
         Write-Host "`::" -NoNewLine
-        Write-Host " New message from @$username " -NoNewLine -ForegroundColor Magenta
+        Write-Host " From @$username " -NoNewLine -ForegroundColor Magenta
         Write-Host "`::" -NoNewLine
         Write-Host " $text" -ForegroundColor Green
     }
 
     # Chat Commands
-    if ($interactive) {
-        if ($id -in $chatid) {
-            if ($text -like "/exit*") {
-                $interactive = $null
-                $Message = "[>] Interactive Shell Mode is now disabled!"
-                $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($Message)&parse_mode=html"
-            }
-            else {
-                $command = iex $text
-                $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($command)&parse_mode=html"
-            }
+    $Message = $null
+    $cmd = $text.split(' ', 2)[0]
+    $arguments = $text.split(' ', 2)[1]
+    switch ($cmd) {
+        {($Interactive) -and ($cmd -eq "/exit")} {
+            $Interactive = $false
+            $Message = "[>] Interactive Shell Mode is now disabled!"
+            break
         }
-    }
-    else {
-        if ($text -like "/getid*") {
+        {($Interactive) -and ($id -in $AllowedChats)} {
+            $Message = iex $text
+            break
+        }
+        {($_ -eq "/getid") -or ($_ -eq "/start")} {
             $Message = "Your Chat ID is $id"
-            $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($Message)&parse_mode=html"
+            break
         }
-        if ($text -like "/hi*") {
-            if ($id -in $chatid) {
-                $Message = "Hi @$username :P"
-                $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($Message)&parse_mode=html"
-            }
+        {($_ -eq "/help") -and ($id -in $AllowedChats)} {
+            $Message  = "<b>----------- PowerGram by @JoelGMSec -----------</b>`n"
+            $Message += "`nAvailable Commands:"
+            $Message += "`n/help = Show this help message"
+            $Message += "`n/wakeonlan = Send wakeonlan command"
+            $Message += "`n/shell = Enable Interactive Shell Mode"
+            $Message += "`n/exit = Disable Interactive Shell Mode"
+            $Message += "`n/upload = Upload file to current folder or specific one"
+            $Message += "`n/download = Download file from current folder or specific one"
+            $Message += "`n/exec = Execute commands on OS with PowerShell"
+            $Message += "`n/getid = Obtain your Chat ID"
+            $Message += "`n/kill = Kill PowerGram Bot"
+            break
         }
-        if ($text -like "/help*") {
-            if ($id -in $chatid) {
-                $Message  = "<b>----------- PowerGram by @JoelGMSec -----------</b>`n"
-                $Message += "`nAvailable Commands:`n/hi = Say hi to PowerGram Bot`n/help = Show this help message`n/wakeonlan = Send wakeonlan command"
-                $Message += "`n/shell = Enable Interactive Shell Mode`n/exit = Disable Interactive Shell Mode"
-                $Message += "`n/upload = Upload file to current folder or specific one`n/download = Download file from current folder or specific one"
-                $Message += "`n/exec = Execute commands on OS with PowerShell`n/getid = Obtain your Chat ID`n/kill = Kill PowerGram Bot"
-                $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($Message)&parse_mode=html"
+        {($_ -eq "/wakeonlan") -and ($id -in $AllowedChats)} {
+            $Mac = $arguments
+            # TODO: Validate $Mac format with regex
+            wakeonlan $Mac
+            if ($?) {
+                $Message = "[>] Sending WOL to [$Mac]"
+            } else {
+                $Message = "[>] WOL Failed"
             }
+            break
         }
-        if ($text -like "/wakeonlan*") {
-            if ($id -in $chatid) {
-                $mac = $text.split(" ",2)[1]
-                $Message = "[>] Sending WOL to $mac.."
-                $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($Message)&parse_mode=html"
-                $Response = wakeonlan $mac
-            }
+        {($_ -eq "/shell") -and ($id -in $AllowedChats)} {
+            $Interactive = $true
+            $Message = "[>] Interactive Shell Mode is now enabled!"
+            break
         }
-        if ($text -like "/shell*") {
-            if ($id -in $chatid) {
-                $interactive = "True"
-                $Message = "[>] Interactive Shell Mode is now enabled!"
-                $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($Message)&parse_mode=html"
-            }
+        {($_ -eq "/upload") -and ($id -in $AllowedChats)} {
+            $document = $arguments
+            $Message = "[>] Waiting for file"
+            $Response = Send-Message $id $Message -ParseMode HTML
+            upload $document
+            $Message = "[>] Upload completed"
+            break
         }
-        if ($text -like "/upload*") {
-            if ($id -in $chatid) {
-                $document = $text.split(" ",2)[1] ; $Message = "[>] Waiting for file.."
-                $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($Message)&parse_mode=html"
-                $Response = sleep 10
-                upload $document
-            }
+        {($_ -eq "/download") -and ($id -in $AllowedChats)} {
+            $document = $arguments
+            $Message = "[>] Sending [$document]"
+            $Response = Send-Message $id $Message -ParseMode HTML
+            $Response = download $document
+            $Message = $null
+            break
         }
-        if ($text -like "/download*") {
-            if ($id -in $chatid) {
-                $document = $text.split(" ",2)[1] ; $Message = "[>] Sending $document.."
-                $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($Message)&parse_mode=html" 
-                $Response = download $document
-            }
+        {($_ -eq "/exec") -and ($id -in $AllowedChats)} {
+            $Message = iex $arguments
+            break
         }
-        if ($text -like "/exec*") {
-            if ($id -in $chatid) {
-                $command = iex $text.split(" ",2)[1]
-                $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($command)&parse_mode=html"
-            }
-        }
-        if ($text -like "/kill*") {
-            if ($id -in $chatid) {
-                $Message = "[>] Killing PowerGram Bot.. Bye!"
-                $Response = Invoke-WebRequest "$baseurl/sendMessage?chat_id=$($id)&text=$($Message)&parse_mode=html" 
-                Write-Host "`n[!] Killing PowerGram Bot.. Bye!`n" -ForegroundColor Red
-                exit
-            }
+        {($_ -eq "/kill") -and ($id -in $AllowedChats)} {
+            $Message = "[>] Killing PowerGram Bot. Bye!"
+            $Response = Send-Message $id $Message
+            Write-Host "`n[!] Killing PowerGram Bot. Bye!`n" -ForegroundColor Red
+            exit
         }
     }
+    if ($Message) { $Response = Send-Message $id $Message }
 }
