@@ -1,58 +1,72 @@
 ﻿#================================#
-#    PowerGram by @JoelGMSec     #
+#          PowerGram v2.0        #
+#   Original code by @JoelGMSec  #
 #      https://darkbyte.net      #
+#      Enhanced by @Jaschan      #
 #================================#
-
-# Design
-$os = [Environment]::OSVersion.Platform
-if ($os -ne "Unix") {
-    $Host.UI.RawUI.WindowTitle = "PowerGram - by @JoelGMSec"
-    $Host.UI.RawUI.BackgroundColor = "Black"
-    $Host.UI.RawUI.ForegroundColor = "White"
-}
-$ErrorActionPreference = "SilentlyContinue"
-$ProgressPreference = "SilentlyContinue"
+using module '.\PGFunctions.psm1'
+Param([Alias('h')][switch]$Help, [Alias('t')][string]$Token)
+#$ErrorActionPreference = "SilentlyContinue"
+#$ProgressPreference = "SilentlyContinue"
 #Set-StrictMode -Off
 
-# Token & ChatID
-$token = "5931392898:AAFlCiZSoy4wFWQlFQt9jEdeVznQHnG9c5w" # Talk with @BotFather and create it first
-$AllowedChats = @("155419747") # Talk with your Bot and send /getid to get it
-$baseurl = "https://api.telegram.org/bot{0}" -f $token
-# Banner
-Write-Host
-Write-Host "  ____                         ____                      " -ForegroundColor Blue
-Write-Host " |  _ \ __ __      __ __ _ __ / ___|_ __ __ _ _ __ ___   " -ForegroundColor Blue
-Write-Host " | |_) / _ \ \ /\ / / _ \ '__| |  _| '__/ _' | '_ ' _ \  " -ForegroundColor Blue
-Write-Host " |  __/ (_) \ V  V /  __/ |  | |_| | | | (_| | | | | | | " -ForegroundColor Blue
-Write-Host " |_|   \___/ \_/\_/ \___|_|   \____|_|  \__,_|_| |_| |_| " -ForegroundColor Blue                                                        
-Write-Host
-Write-Host "  ------------------- by @JoelGMSec -------------------  " -ForegroundColor Blue
+Show-Banner
 
-# Help
-function Show-Help {
-    Write-host
-    Write-Host " Info: " -ForegroundColor Yellow -NoNewLine
-    Write-Host " PowerGram is a pure PowerShell Telegram Bot"
-    Write-Host "        that can be run on Windows, Linux or Mac OS"
-    Write-Host
-    Write-Host " Usage: " -ForegroundColor Yellow -NoNewLine
-    Write-Host "PowerGram from PowerShell" -ForegroundColor Blue 
-    Write-Host "        .\PowerGram.ps1 -h" -ForegroundColor Green -NoNewLine
-    Write-Host " Show this help message" 
-    Write-Host "        .\PowerGram.ps1" -ForegroundColor Green -NoNewLine 
-    Write-Host " Start PowerGram Bot"
-    Write-Host 
-    Write-Host "        PowerGram from Telegram" -ForegroundColor Blue 
-    Write-Host "        /getid" -ForegroundColor Green -NoNewLine
-    Write-Host " Get your Chat ID from Bot"
-    Write-Host "        /help" -ForegroundColor Green -NoNewLine
-    Write-Host " Show all available commands"
-    Write-Host
-    Write-Host " Warning: " -ForegroundColor Red -NoNewLine
-    Write-Host "All commands will be sent using HTTPS GET requests"
-    Write-Host "         " -NoNewLine
-    Write-Host " You need your Chat ID & Bot Token to run PowerGram"
-    Write-Host
+# Show Help command
+if ($Help) {
+    Show-Help
+    exit
+}
+
+# Store Token command
+if ($Token) {
+    $Token > 'token'
+    Write-Host "`n[+] Token saved!`n" -ForegroundColor Green
+    exit
+}
+
+# Load saved Token
+$token = Get-Content -Path 'token'
+if (!$token) {
+    Show-Help
+    Write-Host "`n[!] Token not found! Please check before run PowerGram!`n" -ForegroundColor Red
+    exit
+}
+$baseurl = "https://api.telegram.org/bot{0}" -f $token
+
+# Allowed users unique IDs
+$UsersList = @{
+    "155419747"=@{
+        IsAdmin=$true
+        ShellAccess=$true
+        InShellMode=$false
+        AllowedCommands=@()
+    }
+}
+function Resolve-Access {
+    Param([object]$User,[string]$Command)
+    if ($User.IsAdmin) {
+        return $true
+    }
+    if (($Command -in @('/exec', '/shell') -and $User.ShellAccess)) {
+        return $true
+    }
+    if ($Command -in $User.AllowedCommands) {
+        return $true
+    }
+    return $false
+}
+# TODO: Have this info in a separate file
+# TODO: Add a command to add/remove users unique id
+
+# Design
+$Hostname = ([Environment]::MachineName).ToLower()
+$User = ([Environment]::UserName).ToLower()
+$os = [Environment]::OSVersion.Platform
+if ($os -ne "Unix") {
+    $Host.UI.RawUI.WindowTitle = "PowerGram"
+    $Host.UI.RawUI.BackgroundColor = "Black"
+    $Host.UI.RawUI.ForegroundColor = "White"
 }
 
 # Proxy Aware
@@ -61,13 +75,8 @@ function Show-Help {
 $AllProtocols = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
 [System.Net.ServicePointManager]::SecurityProtocol = $AllProtocols
 
-function Send-Message {
-    Param([int]$ChatID,[string]$Message,[ValidateSet('HTML', 'Markdown', 'MarkdownV2')][string]$ParseMode='HTML')
-    $Uri = "$baseurl/sendMessage?chat_id={0}&text={1}&parse_mode={2}" -f $ChatID, $Message, $ParseMode
-    Invoke-WebRequest $Uri | Write-Output
-}
-
 # Wake On Lan
+# TODO: Test, create one for UNIX
 if ($os -ne "Unix") {
     function wakeonlan {
         Param ([Parameter(ValueFromPipeline)][String[]]$Mac)
@@ -85,6 +94,7 @@ if ($os -ne "Unix") {
 }
 
 # Upload Function
+# TODO: FIX
 function upload {
     Param([string]$uploadfile)
     if ($os -ne "Unix") { $slash = "\" } else { $slash = "/" }
@@ -97,7 +107,7 @@ function upload {
     $jsonpath = [array]($Response | ConvertFrom-Json).result
     $uploadpath = $jsonpath.file_path
     $Message = "[>] Uploading [$docuname]"
-    $Response = Send-Message $id $Message -ParseMode HTML
+    $Response = Send-Message $AnwsTo $Message -ParseMode HTML
     if ($uploadfile -like "*$slash*") {
         Invoke-WebRequest "https://api.telegram.org/file/bot$($token)/$uploadpath" -OutFile $uploadfile$slash$docuname
     } else {
@@ -106,6 +116,7 @@ function upload {
 }
 
 # Download Function
+# TODO: FIX
 function download {
     Param([string]$downloadfile)
     if ($os -ne "Unix") {
@@ -128,71 +139,30 @@ function download {
     Invoke-WebRequest $Uri -Method Post -ContentType "multipart/form-data; boundary=`"$boundary`"" -Body $bodyLines
 }
 
-# Start PowerGram
-if ($args[0] -like "-h*") {
-    Show-Help
-    exit
-}
-if (!$token) {
-    Show-Help
-    Write-Host "`n[!] Token not found! Please check before run PowerGram!`n" -ForegroundColor Red
-    exit
-}
-Write-Host "`n[+] Ready! Waiting for new messages`n" -ForegroundColor Green
-$Hostname = ([Environment]::MachineName).ToLower()
-$User = ([Environment]::UserName).ToLower()
-$Interactive = $false
-
-# Main Function
-while ($true) {
-    $BotUpdates = Invoke-WebRequest -Uri "$baseurl/getUpdates"
-    $JsonResult = [array]($BotUpdates | ConvertFrom-Json).result
-    $messageid = $JsonResult.message.message_id | Select-Object -Last 1
-    $updateid = $JsonResult.update_id | Select-Object -Last 1
-    if ($messageid -eq $null) { $messageid = 0 }
-    $updateid = [int]$updateid++
-    $messageid = [int]$messageid 
-    do {
-        $BotUpdates = Invoke-WebRequest -Uri "$baseurl/getUpdates?offset=$updateid"
-        $JsonResult = [array]($BotUpdates | ConvertFrom-Json).result
-        $messageid2 = $JsonResult.message.message_id | Select-Object -Last 1
-        $messageid2 = [int]$messageid2
-        sleep 1
-    }
-    until ($messageid -notin $messageid2)
-
-    # Event Log
-    if ($JsonResult.message.document -notin $messageid2) {
-        $id = $JsonResult.message.from.id | Select-Object -Last 1
-        $username = $JsonResult.message.from.username | Select-Object -Last 1
-        $text = $JsonResult.message.text | Select-Object -Last 1
-        $time = Get-Date -UFormat "%m/%d/%Y %R"
-        Write-Host "[$time] " -NoNewLine -ForegroundColor Yellow
-        Write-Host "`::" -NoNewLine
-        Write-Host " From @$username " -NoNewLine -ForegroundColor Magenta
-        Write-Host "`::" -NoNewLine
-        Write-Host " $text" -ForegroundColor Green
-    }
-
-    # Chat Commands
+# Chat Commands
+function Invoke-Task {
+    Param([string]$Task,
+          [string]$RawArgs,
+          [object]$User,
+          [int]$AnwsTo)
     $Message = $null
-    $cmd = $text.split(' ', 2)[0]
-    $arguments = $text.split(' ', 2)[1]
-    switch ($cmd) {
-        {($Interactive) -and ($cmd -eq "/exit")} {
-            $Interactive = $false
+    switch ($Task) {
+        {($_ -eq "/exit") -and $User.InShellMode} {
+            $User.InShellMode = $false
             $Message = "[>] Interactive Shell Mode is now disabled!"
             break
         }
-        {($Interactive) -and ($id -in $AllowedChats)} {
+        {$User.InShellMode -and $User.ShellAccess} {
             $Message = iex $text
             break
         }
         {($_ -eq "/getid") -or ($_ -eq "/start")} {
-            $Message = "Your Chat ID is $id"
+            $Message = "Your Chat ID is {0}" -f $AnwsTo
             break
         }
-        {($_ -eq "/help") -and ($id -in $AllowedChats)} {
+        # From here you need to have access to the command
+        {$true}{ if (!(Resolve-Access $User $_)) { break } }
+        '/help' {
             $Message  = "<b>----------- PowerGram by @JoelGMSec -----------</b>`n"
             $Message += "`nAvailable Commands:"
             $Message += "`n/help = Show this help message"
@@ -206,8 +176,8 @@ while ($true) {
             $Message += "`n/kill = Kill PowerGram Bot"
             break
         }
-        {($_ -eq "/wakeonlan") -and ($id -in $AllowedChats)} {
-            $Mac = $arguments
+        '/wakeonlan' {
+            $Mac = $RawArgs
             # TODO: Validate $Mac format with regex
             wakeonlan $Mac
             if ($?) {
@@ -217,37 +187,95 @@ while ($true) {
             }
             break
         }
-        {($_ -eq "/shell") -and ($id -in $AllowedChats)} {
-            $Interactive = $true
+        '/shell' {
+            $User.InShellMode = $true
             $Message = "[>] Interactive Shell Mode is now enabled!"
             break
         }
-        {($_ -eq "/upload") -and ($id -in $AllowedChats)} {
-            $document = $arguments
+        '/upload' {
+            $document = $RawArgs
             $Message = "[>] Waiting for file"
-            $Response = Send-Message $id $Message -ParseMode HTML
+            $Response = Send-Message $AnwsTo $Message -ParseMode HTML
             upload $document
             $Message = "[>] Upload completed"
             break
         }
-        {($_ -eq "/download") -and ($id -in $AllowedChats)} {
-            $document = $arguments
+        '/download' {
+            $document = $RawArgs
             $Message = "[>] Sending [$document]"
-            $Response = Send-Message $id $Message -ParseMode HTML
+            $Response = Send-Message $AnwsTo $Message -ParseMode HTML
             $Response = download $document
             $Message = $null
             break
         }
-        {($_ -eq "/exec") -and ($id -in $AllowedChats)} {
-            $Message = iex $arguments
+        '/exec' {
+            $Message = iex $RawArgs
             break
         }
-        {($_ -eq "/kill") -and ($id -in $AllowedChats)} {
+        '/kill' {
             $Message = "[>] Killing PowerGram Bot. Bye!"
-            $Response = Send-Message $id $Message
+            $Response = Send-Message $AnwsTo $Message
             Write-Host "`n[!] Killing PowerGram Bot. Bye!`n" -ForegroundColor Red
             exit
         }
     }
-    if ($Message) { $Response = Send-Message $id $Message }
+    if ($Message) { $Response = Send-Message $AnwsTo $Message }
+}
+
+# Telegram's API Wrappers
+function Send-Message {
+    Param([int]$ChatID,
+          [string]$Message,
+          [ValidateSet('HTML', 'Markdown', 'MarkdownV2')][string]$ParseMode='HTML')
+    $Uri = "$baseurl/sendMessage?chat_id={0}&text={1}&parse_mode={2}" -f $ChatID, $Message, $ParseMode
+    Invoke-WebRequest $Uri
+}
+
+function Get-Updates {
+    Param([int]$Offset)
+    $GetUpdates = Invoke-WebRequest -Uri "$baseurl/getUpdates?offset=$Offset"
+    [array]($GetUpdates | ConvertFrom-Json).result
+}
+
+# Start PowerGram (Main Loop)
+Write-Host "`n[+] Ready! Waiting for new messages`n" -ForegroundColor Green
+$UpdateIdOffset = 0
+$idle = 0
+$frames = '/-\|'
+$SleepAmount = 2000
+while ($true) {
+    $StartTime = [int](get-date -uformat %s)
+
+    # Idling animation
+    if ($idle -ge $frames.Length) { $idle = 0 }
+    #Write-Host -NoNewLine ("[{0}] Frequency: {1}`r" -f $frames[$idle], ($SleepAmount/1000).ToString('0.0'))
+    $idle++
+
+    # The meat
+    $AllUpdates = Get-Updates $UpdateIdOffset
+    foreach ($Update in $AllUpdates) {
+        $UpdateIdOffset = [uInt64]$Update.update_id + 1
+        # If message is not in the update, it could be an edit, poll, inline_query, etc.
+        if (!($Update.message)) { continue }
+        Write-InEventLog $Update.message.from.username $Update.message.text
+        $User = $UsersList[[string]$Update.message.from.id]
+        $Cmd = $Update.message.text.split(' ', 2)[0]
+        $RawArgs = $Update.message.text.split(' ', 2)[1]
+        Invoke-Task -Task $Cmd -RawArgs $RawArgs -User $User -AnwsTo $Update.message.chat.id
+    }
+
+    # Timing
+    if ($AllUpdates.Count -gt 0) {
+        # Fast mode
+        $FastModeStartTime = [int](get-date -uformat %s)
+        $SleepAmount = 200
+    }
+    if (([int](get-date -uformat %s) - $FastModeStartTime) -gt 10) {
+        # Slow mode
+        $SleepAmount = 2000
+    }
+    $SpentTime = [int](get-date -uformat %s) - $StartTime
+    $SleepTime = $SleepAmount - $SpentTime
+    if ($SleepTime -gt 0) { Start-Sleep -Milliseconds $SleepTime }
+    else { Write-InEventLog 'PowerGram' ("Can't keep up! Running behind by: {0}" -f $SleepTime.ToString('0.0'))}
 }
