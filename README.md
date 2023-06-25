@@ -1,5 +1,6 @@
 # PowerGram
-**PowerGram** is a pure PowerShell Telegram Bot that can be run on Windows, Linux or Mac OS. To make use of it, you only need PowerShell and an internet connection.
+**PowerGram** is a pure PowerShell Telegram Bot that can be run on Windows, Linux or Mac OS.
+To make use of it, you only need PowerShell and an internet connection.
 
 All communication between the Bot and Telegram servers is encrypted with HTTPS, but all requests will be sent in GET method, so they could easily be intercepted.
 
@@ -28,4 +29,6 @@ The [original code](tps://github.com/JoelGMSec/PowerGram/) of this tool was crea
 
 
 # Contact
-This software does not offer any kind of guarantee. Its use is exclusive for educational environments and / or security audits with the corresponding consent of the client. I am not responsible for its misuse or for any possible damage caused by it.
+This software does not offer any kind of guarantee.
+Its use is exclusive for educational environments and / or security audits with the corresponding consent of the client.
+I am not responsible for its misuse or for any possible damage caused by it.
