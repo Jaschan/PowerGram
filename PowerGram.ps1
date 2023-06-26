@@ -260,6 +260,7 @@ function Add-Anime {
     }
     if ($User.addanime.step -ge $Steps.Count) {
         # Completed
+        $User.addanime.wip = $false
         $ListPath = '\torrents\scrapper\Config\LocalAnimeList.json'
         $List = [System.Collections.ArrayList]::new()
         Get-Content -Path $ListPath | ConvertFrom-Json | ForEach-Object {
@@ -267,8 +268,11 @@ function Add-Anime {
         }
         [void]$List.Add($User.addanime.data)
         $List | ConvertTo-Json -Depth 20 > $ListPath
-        $User.addanime.wip = $false
-        return ("Adding <b>{0}</b> completed" -f $User.addanime.data.FolderName)
+        if ($?) {
+            return ("Adding <b>{0}</b> completed" -f $User.addanime.data.FolderName)
+        } else {
+            return ("Adding <b>{0}</b> failed!" -f $User.addanime.data.FolderName)
+        }
     }
     return ("Input <b>{0}</b>" -f $Steps[$User.addanime.step])
 }
