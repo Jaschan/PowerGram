@@ -185,6 +185,14 @@ function Invoke-Task {
             $Message += "`n/kill = Kill PowerGram Bot"
             break
         }
+        '/import' {
+            $Message = iex '/torrents/scrapper/ImportEpisodes.ps1'
+            break
+        }
+        '/deploy' {
+            $Message = iex '/torrents/scrapper/DeployEpisodes.ps1'
+            break
+        }
         '/wakeonlan' {
             $Mac = $RawArgs
             # TODO: Validate $Mac format with regex
